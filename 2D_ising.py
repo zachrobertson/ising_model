@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib import colors 
 from numpy.random import rand
 import pandas as pd 
+'''This program has a multitude of methods to numerically solve the 2-dimmensional ising
+model probelm. Specifically there are methods for manipulating a spin-field, other methods 
+for calculating values from this spin-field for different temperatures and spin-field sizes, 
+and methods to plot these values obtained for different conditions of the spin-field.'''
 
 #nearest neighbour interaction strength
 J = 1
