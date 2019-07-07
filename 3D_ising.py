@@ -1,10 +1,10 @@
 import numpy as np 
-from random import randint
 import matplotlib.pyplot as plt 
-from matplotlib import colors 
-from numpy.random import rand
+from mpl_toolkits import mplot3d
+from matplotlib import colors
 import pandas as pd 
-'''This program has a multitude of methods to numerically solve the 2-dimmensional ising
+from numpy.random import rand
+'''This program has a multitude of methods to numerically solve the 3-dimmensional ising
 model probelm. Specifically there are methods for manipulating a spin-field, other methods 
 for calculating values from this spin-field for different temperatures and spin-field sizes, 
 and methods to plot these values obtained for different conditions of the spin-field.'''
@@ -12,38 +12,42 @@ and methods to plot these values obtained for different conditions of the spin-f
 #nearest neighbour interaction strength
 J = 1
 
-#defines a randomly oriented spin-field
+#creates a square spin-field with side length = nSites
 def init(nSites):
-    return np.random.choice([-1, 1], size=(nSites, nSites))
+    return np.random.choice([-1,1], size=(nSites, nSites, nSites))
 
-#does M^N monte-carlo updates to the spin-field
-def ising_update(field,  T):
-    N, M = field.shape
+#does (H^M)^N monte-carlo updates to the spin-field 
+def ising_update(field, T):
+    N, M, H = field.shape
     for _ in range(N):
         for _ in range(M):
-            x = np.random.randint(0, N)
-            y = np.random.randint(0, M)
-            spin = field[x,y]
-            nb = field[(x+1)%N, y] + field[x, (y+1)%M] +\
-                field[(x-1)%N, y] + field[x, (y-1)%M]
-            dE = 2*J*spin*nb
-            if dE < 0:
-                spin *= -1
-            elif rand() < np.exp(-dE/T):
-                spin *= -1
-            field[x,y] = spin
+            for _ in range(H):
+                x = np.random.randint(N)
+                y = np.random.randint(M)
+                z = np.random.randint(H)
+                spin = field[x,y,z]
+                total = field[(x+1)%N,y,z] + field[(x-1)%N,y,z] + field[x,(y+1)%M,z] + \
+                    field[x,(y-1)%M,z] + field[x,y,(z+1)%H] + field[x,y,(z-1)%H]   
+                dE = 2*J*spin*total
+                if dE < 0:
+                    spin *= -1
+                elif rand() < np.exp(-dE/T):
+                    spin *= -1
+                field[x,y,z] = spin
     return field
 
 #calculates the energy of the spin-field
 def energy(field):
+    N, M, H = field.shape
     energy = 0
-    N, M = field.shape
     for i in range(N):
         for j in range(M):
-            s = field[i, j]
-            nb = field[(i+1)%N, j] + field[i,(j+1)%M] + field[(i-1)%N,j] + field[i,(j-1)%M]
-            energy += -J*nb*s
-    return energy/4.
+            for k in range(H):
+                s = field[i,j,k]
+                nb = field[(i+1)%N,j,k] + field[i,(j+1)%M,k] + field[i,j,(k+1)%H] +\
+                    field[(i-1)%N,j,k] + field[i,(j-1)%M,k] + field[i,j,(k-1)%H]
+                energy += -J*nb*s
+    return energy/6.
 
 #calculates the magnetization of the spin-field
 def mag(field):
@@ -51,21 +55,22 @@ def mag(field):
     return abs(mag)
 
 #exports ['T','E','M','C','X','LOGM','U'] values to csv files named 
-#[20_2D.csv, 40_2D.csv, 128_2D.csv] indicating the side length of the lattice
-#and that it is in 2D, so a square
+#[5_3D.csv, 10_3D.csv, 25_3D.csv] indicating the side length of the lattice
+#and that it is in 3D, so a cube
 def data():
-    nSites = [20,40,128]
+    nSites = [5,10,25]
     for k in range(len(nSites)):
-        start = 1.0
-        stop = 3.5
-        step = .05
+        start = 2.0
+        stop = 5.5
+        step = .1
         nt = int((stop-start)/step)
         N = nSites[k] 
-        nEquil = 2400
+        nEquil = 1240
         nSteps = 1240
         T = np.linspace(start, stop, nt)
         E, M, C, X, LOGM, U = np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt)
-        n1, n2= 1.0/(nSteps*N*N), 1.0/(nSteps*nSteps*N*N)
+        n1, n2 = 1.0/(nSteps*N*N*N), 1.0/(nSteps*nSteps*N*N*N)
+        vol = N*N*N
         for tt in range(nt):
             E1 = M1 = E2 = M2 = M4 = 0
             iT = 1.0/(T[tt]); iT2 = iT*iT
@@ -87,26 +92,26 @@ def data():
                 M1 = M1 + Mag
                 M2 = M2 + Mag*Mag*n1
                 E2 = E2 + Ene*Ene*n1
-                M4 = M4 + pow(Mag, 4)*n1
+                M4 = M4 + Mag*Mag*Mag*Mag*n1
 
             E[tt] = n1*E1
             M[tt] = n1*M1
             C[tt] = (E2 - n2*E1*E1)*iT2
             X[tt] = (M2 - n2*M1*M1)*iT
-            U[tt] = 1 - (M4/3*(M2*M2)*(N*N))
+            U[tt] = 1 - (M4/3*(M2*M2)*vol)
             LOGM[tt] = np.log10(n1*M1) 
         data = np.column_stack((T,E,M,C,X,LOGM,U))
         df = pd.DataFrame(data, columns=['T','E','M','C','X','LOGM','U'])
         if k == 0:
-            df.to_csv('20_2D.csv', index=False)
+            df.to_csv('5_3D.csv', index=False)
         elif k == 1:
-            df.to_csv('40_2D.csv', index=False)
+            df.to_csv('10_3D.csv', index=False)
         else:
-            df.to_csv('128_2D.csv', index=False)
+            df.to_csv('25_3D.csv', index=False)
     print("All Done!")
 
-#plots m/n vs. T from "data" for each value of N
-def mag_2D(data):
+#plots m/n vs. T from "data" for different values of N
+def mag_3D(data):
     color = ['red', 'blue', 'green']
     marker = ['s', '*', 'o']
     for i, d in enumerate(data):
@@ -114,14 +119,14 @@ def mag_2D(data):
         T = df['T']
         M = df['M']
         plt.scatter(T, M, c=color[i], marker=marker[i])
-    plt.legend(['N = 20', 'N = 40', 'N = 128'], loc=3)
+    plt.legend(['N = 5', 'N = 10', 'N = 25'], loc=3)
     plt.xlabel('T')
     plt.ylabel('$|<M>|/N$')
     plt.grid(b=True)
     plt.show()
 
-#plots energy vs. T from "data" for each value of N
-def energy_2D(data):
+#plots energy vs. T from "data" for different values of N
+def energy_3D(data):
     color = ['red', 'blue', 'green']
     marker = ['s', '*', 'o']
     for i, d in enumerate(data):
@@ -129,14 +134,14 @@ def energy_2D(data):
         T = df['T']
         E = df['E']
         plt.scatter(T, E, color=color[i], marker=marker[i])
-    plt.legend(['N = 20', 'N = 40', 'N = 128'], loc=2)
+    plt.legend(['N = 5', 'N = 10', 'N = 25'], loc=2)
     plt.xlabel('T')
     plt.ylabel('Energy')
     plt.grid(b=True)
     plt.show()
 
-#plots chi vs. T from "data" for each value of N
-def chi_2D(data):
+#plots chi vs. T from "data" for different values of N
+def chi_3D(data):
     color = ['red', 'blue', 'green']
     marker = ['s', '*', 'o']
     c = []
@@ -146,8 +151,8 @@ def chi_2D(data):
         df = pd.read_csv(d)
         T = df['T']
         chi = df['X']
-        TC = 2.27
-        width = 0.25
+        TC = 4.3
+        width = 0.5
         dfn = df[(df['T'] < TC + width) & (df['T'] > TC - width)]
         maxx = max(dfn['X'])
         maxt = dfn[dfn['X'] == maxx]['T']
@@ -155,27 +160,25 @@ def chi_2D(data):
         t.append(maxt)
         l = plt.scatter(T, chi, color=color[i], marker=marker[i])
         line.append(l)
-    plt.legend([line[0], line[1], line[2]], ['N = 20 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 40 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 128 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
+    plt.legend([line[0], line[1], line[2]], ['N = 5 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 10 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 25 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
     plt.xlabel('T')
-    plt.ylabel('Magnetic Susceptiblity')
+    plt.ylabel('Magnetic Susceptibility')
+    plt.xlim(3.5, 5.5)
     plt.axvline(x=TC-width)
     plt.axvline(x=TC+width)
     plt.grid(b=True)
-    plt.xlim(1.9, 2.9)
     plt.show()
 
-#rejects the outlierss from a set, outliers are defined as thoose values
-#outside of mean by more than m standard deviations
-#It should be obvious that this can only be used when the acceptable values
-#are near the mean
+#rejects data points outside of m standard deviations from the mean
+#Of course this should only be used on data that has desirerable points near the mean
 def reject_outliers(data, m=0.5):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 
 #plot log(m/n) vs. T from "data" for different values of N
-def logmag_2D(data):
+def logmag_3D(data):
     color = ['red', 'blue', 'green', 'orange', 'purple']
     f, ax = plt.subplots(1, 3, sharey=True)
-    T = np.linspace(2.1, 2.5, 5)
+    T = np.linspace(4.0, 5.0, 5)
     for i, d in enumerate(data):
         for j, tt in enumerate(T):
             df = pd.read_csv(d)
@@ -183,13 +186,13 @@ def logmag_2D(data):
             logt = np.log10(tt - df['T'])
             logm = df['LOGM']
             ax[i].scatter(logt, logm, color=color[j])
-            if j == 2:
+            if j == 1:
                 line = np.polyfit(logt, logm, 1)
                 line_f = np.poly1d(line)
                 ax[i].plot(logt, line_f(logt), color=color[j])
                 leg = ax[i].legend(['T = %.2f with slope %.2f' %(tt, line[0])], loc=3)
                 ax[i].add_artist(leg)
-                if i == 1 or i == 2:
+                if i == 2:
                     logm_r = reject_outliers(logm)
                     logm = df.LOGM.isin(logm_r)
                     df_r = df[logm]
@@ -201,8 +204,8 @@ def logmag_2D(data):
         ax[i].grid(b=True)               
     plt.show()
 
-#plot specific heat per site vs. T from "data" for different values of N
-def C_2D(data):
+#plot specific heat per site vs. T for different values of N
+def C_3D(data):
     color = ['red', 'blue', 'green']
     marker = ['s', '*', 'o']
     c = []
@@ -210,7 +213,7 @@ def C_2D(data):
     t = []
     for i, d in enumerate(data):
         df = pd.read_csv(d)
-        TC = 2.27
+        TC = 4.3
         width = .5
         dfn = df[(df['T'] < TC + width) & (df['T'] > TC - width)]
         maxc = max(dfn['C'])
@@ -225,41 +228,21 @@ def C_2D(data):
     plt.axvline(x=TC+width)
     plt.xlabel('T')
     plt.ylabel('Specific Heat per site C(T)/N')
-    plt.legend([line[0], line[1], line[2]], ['N = 20 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 40 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 128 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
+    plt.legend([line[0], line[1], line[2]], ['N = 5 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 10 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 25 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
     plt.grid(b=True)
     plt.show()
 
-#arrows that show a visulaization of a small spin-field
-def arrows():
-    x = np.linspace(0, 1, num=4)
-    y = np.linspace(0, 1, num=4)
-    for i, xpos in enumerate(x):
-        for j, ypos in enumerate(y):
-            if i > 0 & i < len(x):
-                if j > 0 & j< len(y):
-                    x_dir = 0
-                    y_dir = 1
-                    plt.quiver(xpos, ypos, x_dir, y_dir)
-    plt.ylim(0.3, 1.1)
-    plt.xticks([])
-    plt.yticks([])
-    plt.show()
-
-#plots the spins of the spin-field as black and white
-#need to create another method to output field values at differnt T values
-def plot(field):
-    
-    cmap = colors.ListedColormap(['white', 'black'])
-    bounds = [-1, 0 , 1]
-    norm = colors.BoundaryNorm(bounds, cmap.N)
-
-    fig = plt.figure()
-    ax = fig.subplots()
-    ax.imshow(field, cmap=cmap, norm=norm)
-
-    ax.grid(which='major', axis='both', linestyle='-', color='k', linewidth=2)
-    ax.set_xticks(np.arange(field.shape[0] + 1, 1))
-    ax.set_yticks(np.arange(field.shape[1] + 1, 1))
-    
+#plots the spin orientation of the spin-field
+def plot_3d_spins(field):
+    plt.figure()
+    ax = plt.axes(projection='3d')
+    N, M, H = field.shape
+    for i in range(N):
+        for j in range(M):
+            for k in range(H):
+                if field[i,j,k] == 1:
+                    ax.scatter(i, j, k, c='blue')
+                else:
+                    ax.scatter(i, j, k, c='red')
     plt.show()
 
