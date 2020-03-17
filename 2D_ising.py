@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib import colors 
 from matplotlib.legend import Legend
 
-
 class TwoDModel:
     '''
     This is a class that creates a random spin field of size nSites x nSites. 
@@ -90,7 +89,7 @@ class TwoDModel:
                 field[x,y] = spin
         return field
 
-    def equipbrate_field(self, field, T):
+    def equilibrate_field(self, field, T):
         '''
         Equilibrates the spin field for a given temperature utilizing the ising_update method
 
@@ -153,7 +152,6 @@ class TwoDModel:
         stop = 3.5
         step = .01
         nt = int((stop-start)/step)
-        nEquil = self.nEquil
         nSteps = self.nSteps
 
         T = np.linspace(start, stop, nt)
@@ -169,8 +167,7 @@ class TwoDModel:
                 iT = 1.0/(T[tt]); iT2 = iT*iT
                 field = rfield(N)
 
-                for _ in range(nEquil):
-                    field = ising(field, T[tt])
+                field = self.equilibrate_field(field, T[tt])
 
                 for _ in range(nSteps):
                     field = ising(field, T[tt])
@@ -236,7 +233,7 @@ class TwoDModel:
         np.savetxt(filename, field, delimiter=',')
         print(f'Field saved to {filename}')
 
-class TwoDPlotting:
+
     '''
     Class used for plotting the attributes of the spin fields from the csv file data.
     Initilization finds all the csv files in the path and saves them to self.data
@@ -247,7 +244,7 @@ class TwoDPlotting:
     def __init__(self):
         data = []
         nSites = []
-        csv_regex = re.compile(r'(.csv)')
+        csv_regex = re.compile(r'(2D(_rejected)*.csv)')
         spinfieldregex = re.compile(r'((?=SpinFieldValues))')
         with os.scandir() as entries:
             for entry in entries:
@@ -443,7 +440,7 @@ class TwoDPlotting:
         self.logmag_2D()
         self.C_2D()
         
-class PlotSpinField:
+class TwoDSpinPlotting:
     '''
     Helper class for visualizing the spin fields produced with the TwoDModel class.
 
