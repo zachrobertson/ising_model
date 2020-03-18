@@ -4,245 +4,199 @@ from mpl_toolkits import mplot3d
 from matplotlib import colors
 import pandas as pd 
 from numpy.random import rand
-'''This program has a multitude of methods to numerically solve the 3-dimmensional ising
-model probelm. Specifically there are methods for manipulating a spin-field, other methods 
-for calculating values from this spin-field for different temperatures and spin-field sizes, 
-and methods to plot these values obtained for different conditions of the spin-field.'''
 
-#nearest neighbour interaction strength
-J = 1
+class ThreeDModel :
 
-#creates a square spin-field with side length = nSites
-def init(nSites):
-    return np.random.choice([-1,1], size=(nSites, nSites, nSites))
+    def __init__(self, J_value=1):
+        self.J = J_value
+        self.nEquil = 2400
+        self.nSteps = 1240
 
-#does (H^M)^N monte-carlo updates to the spin-field 
-def ising_update(field, T):
-    N, M, H = field.shape
-    for _ in range(N):
-        for _ in range(M):
-            for _ in range(H):
-                x = np.random.randint(N)
-                y = np.random.randint(M)
-                z = np.random.randint(H)
-                spin = field[x,y,z]
-                total = field[(x+1)%N,y,z] + field[(x-1)%N,y,z] + field[x,(y+1)%M,z] + \
-                    field[x,(y-1)%M,z] + field[x,y,(z+1)%H] + field[x,y,(z-1)%H]   
-                dE = 2*J*spin*total
-                if dE < 0:
-                    spin *= -1
-                elif rand() < np.exp(-dE/T):
-                    spin *= -1
-                field[x,y,z] = spin
-    return field
 
-#calculates the energy of the spin-field
-def energy(field):
-    N, M, H = field.shape
-    energy = 0
-    for i in range(N):
-        for j in range(M):
-            for k in range(H):
-                s = field[i,j,k]
-                nb = field[(i+1)%N,j,k] + field[i,(j+1)%M,k] + field[i,j,(k+1)%H] +\
-                    field[(i-1)%N,j,k] + field[i,(j-1)%M,k] + field[i,j,(k-1)%H]
-                energy += -J*nb*s
-    return energy/6.
+    def SpinNeighbours(self, field, x, y, z):
+        N, M, H = field.shape
+        spin = field[x,y,z]
+        total = field[(x+1)%N,y,z] + field[(x-1)%N,y,z] + field[x,(y+1)%M,z] + \
+                field[x,(y-1)%M,z] + field[x,y,(z+1)%H] + field[x,y,(z-1)%H] 
+        return spin, total
 
-#calculates the magnetization of the spin-field
-def mag(field):
-    mag = np.sum(field)
-    return abs(mag)
+    def RandomField(self, nSites):
+        random_field = np.random.choice([-1, 1], size=(nSites, nSites, nSites))
+        return random_field
 
-#exports ['T','E','M','C','X','LOGM','U'] values to csv files named 
-#[5_3D.csv, 10_3D.csv, 25_3D.csv] indicating the side length of the lattice
-#and that it is in 3D, so a cube
-def data():
-    nSites = [5,10,25]
-    for k in range(len(nSites)):
+    def ising_update(self, field, T):
+        N, M, H = field.shape
+        for _ in range(N):
+            for _ in range(M):
+                for _ in range(H):
+                    x = np.random.randint(N)
+                    y = np.random.randint(M)
+                    z = np.random.randint(H)
+                    spin, total = self.SpinNeighbours(field, x, y, z)
+                    '''spin = field[x,y,z]
+                    total = field[(x+1)%N,y,z] + field[(x-1)%N,y,z] + field[x,(y+1)%M,z] + \
+                        field[x,(y-1)%M,z] + field[x,y,(z+1)%H] + field[x,y,(z-1)%H]'''   
+                    dE = 2*self.J*spin*total
+                    if dE < 0:
+                        spin *= -1
+                    elif np.random.random_sample() < np.exp(-dE/T):
+                        spin *= -1
+                    field[x,y,z] = spin
+        return field
+
+    def energy(self, field):
+        N, M, H = field.shape
+        energy = 0
+        for i in range(N):
+            for j in range(M):
+                for k in range(H):
+                    spin, total = self.SpinNeighbours(field, i, j, k)
+                    energy += -self.J*total*spin
+        return energy/6
+
+    def equilibrate_field(self, field, T):
+        '''
+        Equilibrates the spin field for a given temperature utilizing the ising_update method
+
+        Paramters :
+            field (numpy array) : The spin field we are trying to equilibrate
+            T (flaot) : Temperature of the surrounding enviroment wiht which the field is equilibrated 
+                        with
+        '''
+        nEquil = self.nEquil
+        ising = self.ising_update
+        for _ in range(0, nEquil):
+            field = ising(field, T)
+        return field
+
+    def mag(self, field):
+        mag = np.sum(field)
+        return abs(mag)
+
+    def reject_outliers(self, df):
+        '''
+        Rejects outliers from the csv data, the outliers are defined as points with a Magnetization
+        value that is greateer than the next value by .00002. This has been chosen because the
+        Magnetization is generally supposed to trend down at all points, so if the difference between 
+        the current point and the next point is negative we know the point is trending the wrong
+        direction and can be rejected.
+
+        Parameters :
+            df (pandas data frame) : DataFrame from the csv file data,
+                        use df = pd.read_csv(filename, header=0)
+        '''
+        df_rejected = pd.DataFrame(columns=['T','E','M','C','X','LOGM','U'])
+        for index, row in df.iterrows():
+            if index == len(df.index) - 1:
+                df_rejected = df_rejected.append(df.iloc[index,:])
+                return df_rejected
+            diff = row['M'] - df.M.iloc[index + 1]
+            if diff < -0.0002:
+                print('rejected point', diff)
+            else:
+                df_rejected = df_rejected.append(df.iloc[index,:])
+
+    def data_to_csv(self, nSites):
+        '''
+        Exports ['T','E','M','C','X','LOGM','U'] values to a csv file, named for the number of sites,
+        after equilibration of the field and an averaging over nSteps number of values.
+
+        Parameters :
+            nSites (list of ints) : list of integer values to use a the side lengths of the square
+                        lattices 
+        '''
+        rfield = self.RandomField
+        ising = self.ising_update
+        en = self.energy
+        mg = self.mag
         start = 2.0
         stop = 5.5
-        step = .1
+        step = .01
         nt = int((stop-start)/step)
-        N = nSites[k] 
-        nEquil = 1240
-        nSteps = 1240
+        nSteps = self.nSteps
+
         T = np.linspace(start, stop, nt)
+        n1t = list(map(lambda x: 1.0/(nSteps*x*x*x), nSites))
+        n2t = list(map(lambda x: 1.0/(nSteps*nSteps*x*x*x), nSites))
         E, M, C, X, LOGM, U = np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt), np.zeros(nt)
-        n1, n2 = 1.0/(nSteps*N*N*N), 1.0/(nSteps*nSteps*N*N*N)
-        vol = N*N*N
-        for tt in range(nt):
-            E1 = M1 = E2 = M2 = M4 = 0
-            iT = 1.0/(T[tt]); iT2 = iT*iT
-            E1: np.float64
-            E2: np.float64
-            M1: np.float64
-            M2: np.float64
-            field = init(N)
+        for k in range(len(nSites)):
+            N = nSites[k]
+            vol = N*N*N
+            n1, n2= n1t[k], n2t[k]
+            print(f'Strating equilibration for nSites = {nSites[k]}')
+            for tt in range(nt):
+                E1 = M1 = E2 = M2 = M4 = 0.0
+                iT = 1.0/(T[tt]); iT2 = iT*iT
+                field = rfield(N)
 
-            for _ in range(nEquil):
-                ising_update(field, T[tt])
+                field = self.equilibrate_field(field, T[tt])
 
-            for _ in range(nSteps):
-                ising_update(field, T[tt])
-                Ene = energy(field)
-                Mag = mag(field)
+                for _ in range(nSteps):
+                    field = ising(field, T[tt])
+                    Ene = en(field)
+                    Mag = mg(field)
 
-                E1 = E1 + Ene
-                M1 = M1 + Mag
-                M2 = M2 + Mag*Mag*n1
-                E2 = E2 + Ene*Ene*n1
-                M4 = M4 + Mag*Mag*Mag*Mag*n1
+                    E1 = E1 + Ene
+                    M1 = M1 + Mag
+                    M2 = M2 + Mag*Mag*n1
+                    E2 = E2 + Ene*Ene*n1
+                    M4 = M4 + pow(Mag, 4)*n1
 
-            E[tt] = n1*E1
-            M[tt] = n1*M1
-            C[tt] = (E2 - n2*E1*E1)*iT2
-            X[tt] = (M2 - n2*M1*M1)*iT
-            U[tt] = 1 - (M4/3*(M2*M2)*vol)
-            LOGM[tt] = np.log10(n1*M1) 
-        data = np.column_stack((T,E,M,C,X,LOGM,U))
-        df = pd.DataFrame(data, columns=['T','E','M','C','X','LOGM','U'])
-        if k == 0:
-            df.to_csv('5_3D.csv', index=False)
-        elif k == 1:
-            df.to_csv('10_3D.csv', index=False)
-        else:
-            df.to_csv('25_3D.csv', index=False)
-    print("All Done!")
+                E[tt] = n1*E1
+                M[tt] = n1*M1
+                C[tt] = (E2 - n2*E1*E1)*iT2
+                X[tt] = (M2 - n2*M1*M1)*iT
+                U[tt] = 1 - (M4/3*(M2*M2)*vol)
+                LOGM[tt] = np.log10(n1*M1) 
 
-#plots m/n vs. T from "data" for different values of N
-def mag_3D(data):
-    color = ['red', 'blue', 'green']
-    marker = ['s', '*', 'o']
-    for i, d in enumerate(data):
-        df = pd.read_csv(d)
-        T = df['T']
-        M = df['M']
-        plt.scatter(T, M, c=color[i], marker=marker[i])
-    plt.legend(['N = 5', 'N = 10', 'N = 25'], loc=3)
-    plt.xlabel('T')
-    plt.ylabel('$|<M>|/N$')
-    plt.grid(b=True)
-    plt.show()
+            data = np.column_stack((T,E,M,C,X,LOGM,U))
+            df = pd.DataFrame(data, columns=['T','E','M','C','X','LOGM','U'])
+            df_rejected = self.reject_outliers(df)
+            
+            print(f'Staring exporting of data for nSites = {nSites[k]}')
+            df.to_csv(f'{nSites[k]}_3D.csv', index=False)
+            df_rejected.to_csv(f'{nSites[k]}_3D_rejected.csv', index=False)
+            
+        print("All Done!")
 
-#plots energy vs. T from "data" for different values of N
-def energy_3D(data):
-    color = ['red', 'blue', 'green']
-    marker = ['s', '*', 'o']
-    for i, d in enumerate(data):
-        df = pd.read_csv(d)
-        T = df['T']
-        E = df['E']
-        plt.scatter(T, E, color=color[i], marker=marker[i])
-    plt.legend(['N = 5', 'N = 10', 'N = 25'], loc=2)
-    plt.xlabel('T')
-    plt.ylabel('Energy')
-    plt.grid(b=True)
-    plt.show()
+    def SpinFieldToFile(self, field):
+        '''
+        Saves the spin field values to a csv file for plotting.
 
-#plots chi vs. T from "data" for different values of N
-def chi_3D(data):
-    color = ['red', 'blue', 'green']
-    marker = ['s', '*', 'o']
-    c = []
-    t = []
-    line = []
-    for i, d in enumerate(data):
-        df = pd.read_csv(d)
-        T = df['T']
-        chi = df['X']
-        TC = 4.3
-        width = 0.5
-        dfn = df[(df['T'] < TC + width) & (df['T'] > TC - width)]
-        maxx = max(dfn['X'])
-        maxt = dfn[dfn['X'] == maxx]['T']
-        c.append(maxx)
-        t.append(maxt)
-        l = plt.scatter(T, chi, color=color[i], marker=marker[i])
-        line.append(l)
-    plt.legend([line[0], line[1], line[2]], ['N = 5 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 10 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 25 with $C_{max}$ = %.2f at $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
-    plt.xlabel('T')
-    plt.ylabel('Magnetic Susceptibility')
-    plt.xlim(3.5, 5.5)
-    plt.axvline(x=TC-width)
-    plt.axvline(x=TC+width)
-    plt.grid(b=True)
-    plt.show()
+        Parameters :
+            field (numpy array) : Field that you are saving with the filename, 
+                    SpinFieldValues_size_2D.csv
+        '''
+        size = field.shape[0]
+        filename = f'SpinFieldValues_{size}_2D.csv'
+        np.savetxt(filename, field, delimiter=',')
+        print(f'Field saved to {filename}')
+        
+class ThreeDSpinPlotting :
+    '''
+    Helper class for visualizing the spin fields produced with the TwoDModel class.
 
-#rejects data points outside of m standard deviations from the mean
-#Of course this should only be used on data that has desirerable points near the mean
-def reject_outliers(data, m=0.5):
-    return data[abs(data - np.mean(data)) < m * np.std(data)]
+    Parameters :
+        None
+    '''
+    
+    def plot_3d_spins(self, field):
+        '''
+        Plots the spin fields represented with blue and red spheres for each particle, blue is spin up
+        and red is spin down.
 
-#plot log(m/n) vs. T from "data" for different values of N
-def logmag_3D(data):
-    color = ['red', 'blue', 'green', 'orange', 'purple']
-    f, ax = plt.subplots(1, 3, sharey=True)
-    T = np.linspace(4.0, 5.0, 5)
-    for i, d in enumerate(data):
-        for j, tt in enumerate(T):
-            df = pd.read_csv(d)
-            df = df[df['T'] < tt]
-            logt = np.log10(tt - df['T'])
-            logm = df['LOGM']
-            ax[i].scatter(logt, logm, color=color[j])
-            if j == 1:
-                line = np.polyfit(logt, logm, 1)
-                line_f = np.poly1d(line)
-                ax[i].plot(logt, line_f(logt), color=color[j])
-                leg = ax[i].legend(['T = %.2f with slope %.2f' %(tt, line[0])], loc=3)
-                ax[i].add_artist(leg)
-                if i == 2:
-                    logm_r = reject_outliers(logm)
-                    logm = df.LOGM.isin(logm_r)
-                    df_r = df[logm]
-                    logt_r = np.log10(tt - df_r['T'])
-                    line = np.polyfit(logt_r, logm_r, 1)
-                    line_f = np.poly1d(line)
-                    ax[i].plot(logt, line_f(logt), color='k')
-                    ax[i].legend(['Slope wiht outliers removed is %.2f' %line[0]], loc=2)
-        ax[i].grid(b=True)               
-    plt.show()
-
-#plot specific heat per site vs. T for different values of N
-def C_3D(data):
-    color = ['red', 'blue', 'green']
-    marker = ['s', '*', 'o']
-    c = []
-    line = []
-    t = []
-    for i, d in enumerate(data):
-        df = pd.read_csv(d)
-        TC = 4.3
-        width = .5
-        dfn = df[(df['T'] < TC + width) & (df['T'] > TC - width)]
-        maxc = max(dfn['C'])
-        maxt = dfn[dfn['C'] == maxc]['T']
-        T = df['T']
-        C = df['C']
-        l = plt.scatter(T, C, c=color[i], marker=marker[i])
-        c.append(maxc)
-        line.append(l)
-        t.append(maxt)
-    plt.axvline(x=TC-width)
-    plt.axvline(x=TC+width)
-    plt.xlabel('T')
-    plt.ylabel('Specific Heat per site C(T)/N')
-    plt.legend([line[0], line[1], line[2]], ['N = 5 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[0], t[0]), 'N = 10 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[1], t[1]), 'N = 25 with $C_{max}$ = %.2f, and $T_{max}$ = %.2f' %(c[2], t[2])], loc=2)
-    plt.grid(b=True)
-    plt.show()
-
-#plots the spin orientation of the spin-field
-def plot_3d_spins(field):
-    plt.figure()
-    ax = plt.axes(projection='3d')
-    N, M, H = field.shape
-    for i in range(N):
-        for j in range(M):
-            for k in range(H):
-                if field[i,j,k] == 1:
-                    ax.scatter(i, j, k, c='blue')
-                else:
-                    ax.scatter(i, j, k, c='red')
-    plt.show()
-
+        Parameters :
+            field (numpy array) : Spin field, can get from saved field by using from numpy import genfromtxt
+                    field = genfromtxt(filename, delimiter=',')
+        '''
+        plt.figure()
+        ax = plt.axes(projection='3d')
+        N, M, H = field.shape
+        for i in range(N):
+            for j in range(M):
+                for k in range(H):
+                    if field[i,j,k] == 1:
+                        ax.scatter(i, j, k, c='blue')
+                    else:
+                        ax.scatter(i, j, k, c='red')
+        plt.show()
