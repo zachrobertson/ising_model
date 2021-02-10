@@ -5,7 +5,7 @@
 
 Thus the hamiltonian of the material is given by :
 
-![Hamiltonian](https://github.com/Zach-Robertson19/ising_model/blob/master/images/hamiltonian.jpg)
+![Hamiltonian](https://github.com/Zach-Robertson19/ising_model/blob/master/images/Hamiltonian.jpg)
   
   Our goal now, given this hamiltonian, is to solve for quantities of interest as a function of temperature. The 1-D and 2-D case have been solve analytically in the absence of a magnetic field. In the 1-D case we see no phase transiton of the magnetization, and for the 2-D case we do see a phase transtion of the magnetization. A phase transition being a change in state relative to temperatrue, meaning that below a certain temperature, T<sub>c</sub>, all the spins will align to proudce a non-zero magnetization. The 2-D case was solved analytically using Mean Field Theory, a graph of this MFT solution of the Magnetization is show below.
 
