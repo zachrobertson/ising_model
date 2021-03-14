@@ -1,0 +1,5 @@
+# Compiled python binaries
+__pycache__
+
+# Data files
+*.csv
